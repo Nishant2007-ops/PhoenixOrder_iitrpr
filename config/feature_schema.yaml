@@ -1,0 +1,517 @@
+project:
+  name: PhoenixOrder_iitrpr
+  version: "1.0"
+
+description: >
+  Canonical network-flow feature schema for PhoenixOrder_iitrpr.
+  The schema defines 44 features used to create a common representation
+  across CSE-CIC-IDS2018 and CTU-13 for temporal network-state modeling.
+
+datasets:
+  cse_cic_ids2018:
+    name: CSE-CIC-IDS2018
+    format: csv
+
+  ctu_13:
+    name: CTU-13
+    format: binetflow
+
+availability_types:
+  direct: Feature is directly available in the dataset.
+  derived: Feature is calculated from available source fields.
+  unavailable: Feature cannot be reliably obtained from the dataset.
+
+features:
+
+  # ============================================================
+  # 1. FLOW AND TEMPORAL FEATURES
+  # ============================================================
+
+  - name: flow_duration
+    category: flow_timing
+    type: numeric
+    cse:
+      source: "Flow Duration"
+      availability: direct
+      unit: microseconds
+    ctu:
+      source: "Dur"
+      availability: direct
+
+  - name: flow_start_time
+    category: flow_timing
+    type: timestamp
+    cse:
+      source: "Timestamp"
+      availability: direct
+    ctu:
+      source: "StartTime"
+      availability: direct
+
+  - name: start_hour
+    category: temporal
+    type: numeric
+    cse:
+      source: "Timestamp"
+      availability: derived
+      transformation: "extract hour"
+    ctu:
+      source: "StartTime"
+      availability: derived
+      transformation: "extract hour"
+
+  - name: start_day_of_week
+    category: temporal
+    type: categorical
+    cse:
+      source: "Timestamp"
+      availability: derived
+      transformation: "extract day of week"
+    ctu:
+      source: "StartTime"
+      availability: derived
+      transformation: "extract day of week"
+
+  # ============================================================
+  # 2. PROTOCOL AND CONNECTION
+  # ============================================================
+
+  - name: protocol
+    category: protocol
+    type: categorical
+    cse:
+      source: "Protocol"
+      availability: direct
+    ctu:
+      source: "Proto"
+      availability: direct
+
+  - name: source_port
+    category: protocol
+    type: numeric
+    cse:
+      source: "Src Port"
+      availability: direct
+      scope: "available in one CSE schema variant"
+    ctu:
+      source: "Sport"
+      availability: direct
+
+  - name: destination_port
+    category: protocol
+    type: numeric
+    cse:
+      source: "Dst Port"
+      availability: direct
+    ctu:
+      source: "Dport"
+      availability: direct
+
+  - name: connection_state
+    category: connection
+    type: categorical
+    cse:
+      source: null
+      availability: unavailable
+    ctu:
+      source: "State"
+      availability: direct
+
+  - name: traffic_direction
+    category: connection
+    type: categorical
+    cse:
+      source: null
+      availability: unavailable
+    ctu:
+      source: "Dir"
+      availability: direct
+
+  # ============================================================
+  # 3. TRAFFIC VOLUME
+  # ============================================================
+
+  - name: total_packets
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "Tot Fwd Pkts + Tot Bwd Pkts"
+      availability: derived
+      transformation: "sum forward and backward packets"
+    ctu:
+      source: "TotPkts"
+      availability: direct
+
+  - name: total_bytes
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "TotLen Fwd Pkts + TotLen Bwd Pkts"
+      availability: derived
+      transformation: "sum forward and backward bytes"
+    ctu:
+      source: "TotBytes"
+      availability: direct
+
+  - name: forward_packets
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "Tot Fwd Pkts"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: backward_packets
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "Tot Bwd Pkts"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: forward_bytes
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "TotLen Fwd Pkts"
+      availability: direct
+    ctu:
+      source: "SrcBytes"
+      availability: direct
+
+  - name: backward_bytes
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "TotLen Bwd Pkts"
+      availability: direct
+    ctu:
+      source: "TotBytes - SrcBytes"
+      availability: derived
+
+  - name: source_byte_ratio
+    category: traffic_volume
+    type: numeric
+    cse:
+      source: "TotLen Fwd Pkts / total bytes"
+      availability: derived
+    ctu:
+      source: "SrcBytes / TotBytes"
+      availability: derived
+
+  # ============================================================
+  # 4. TRAFFIC RATES
+  # ============================================================
+
+  - name: bytes_per_second
+    category: traffic_rate
+    type: numeric
+    cse:
+      source: "Flow Byts/s"
+      availability: direct
+    ctu:
+      source: "TotBytes / Dur"
+      availability: derived
+
+  - name: packets_per_second
+    category: traffic_rate
+    type: numeric
+    cse:
+      source: "Flow Pkts/s"
+      availability: direct
+    ctu:
+      source: "TotPkts / Dur"
+      availability: derived
+
+  - name: forward_packets_per_second
+    category: traffic_rate
+    type: numeric
+    cse:
+      source: "Fwd Pkts/s"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: backward_packets_per_second
+    category: traffic_rate
+    type: numeric
+    cse:
+      source: "Bwd Pkts/s"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: bytes_per_packet
+    category: traffic_rate
+    type: numeric
+    cse:
+      source: "total_bytes / total_packets"
+      availability: derived
+    ctu:
+      source: "TotBytes / TotPkts"
+      availability: derived
+
+  # ============================================================
+  # 5. PACKET STATISTICS
+  # ============================================================
+
+  - name: packet_length_mean
+    category: packet_statistics
+    type: numeric
+    cse:
+      source: "Pkt Len Mean"
+      availability: direct
+    ctu:
+      source: "TotBytes / TotPkts"
+      availability: derived
+
+  - name: packet_length_std
+    category: packet_statistics
+    type: numeric
+    cse:
+      source: "Pkt Len Std"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+
+  - name: forward_packet_length_mean
+    category: packet_statistics
+    type: numeric
+    cse:
+      source: "Fwd Pkt Len Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: backward_packet_length_mean
+    category: packet_statistics
+    type: numeric
+    cse:
+      source: "Bwd Pkt Len Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+
+  # ============================================================
+  # 6. INTER-ARRIVAL TIME
+  # ============================================================
+
+  - name: flow_iat_mean
+    category: timing
+    type: numeric
+    cse:
+      source: "Flow IAT Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: flow_iat_std
+    category: timing
+    type: numeric
+    cse:
+      source: "Flow IAT Std"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: forward_iat_mean
+    category: timing
+    type: numeric
+    cse:
+      source: "Fwd IAT Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: backward_iat_mean
+    category: timing
+    type: numeric
+    cse:
+      source: "Bwd IAT Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  # ============================================================
+  # 7. TCP FLAGS
+  # ============================================================
+
+  - name: syn_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "SYN Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: ack_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "ACK Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: fin_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "FIN Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: rst_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "RST Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: psh_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "PSH Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: urg_count
+    category: tcp_flags
+    type: numeric
+    cse:
+      source: "URG Flag Cnt"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  # ============================================================
+  # 8. DIRECTIONAL BEHAVIOUR
+  # ============================================================
+
+  - name: down_up_ratio
+    category: directional
+    type: numeric
+    cse:
+      source: "Down/Up Ratio"
+      availability: direct
+    ctu:
+      source: "TotBytes and SrcBytes"
+      availability: derived
+      transformation: "backward_bytes / forward_bytes"
+
+  - name: forward_byte_ratio
+    category: directional
+    type: numeric
+    cse:
+      source: "TotLen Fwd Pkts / total bytes"
+      availability: derived
+    ctu:
+      source: "SrcBytes / TotBytes"
+      availability: derived
+
+  - name: forward_packet_ratio
+    category: directional
+    type: numeric
+    cse:
+      source: "Tot Fwd Pkts / total packets"
+      availability: derived
+    ctu:
+      source: null
+      availability: unavailable
+
+  # ============================================================
+  # 9. ACTIVITY / IDLE
+  # ============================================================
+
+  - name: active_mean
+    category: activity
+    type: numeric
+    cse:
+      source: "Active Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: idle_mean
+    category: activity
+    type: numeric
+    cse:
+      source: "Idle Mean"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  # ============================================================
+  # 10. TCP WINDOW / HEADER INFORMATION
+  # ============================================================
+
+  - name: initial_forward_window
+    category: tcp_window
+    type: numeric
+    cse:
+      source: "Init Fwd Win Byts"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: initial_backward_window
+    category: tcp_window
+    type: numeric
+    cse:
+      source: "Init Bwd Win Byts"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: forward_header_length
+    category: header
+    type: numeric
+    cse:
+      source: "Fwd Header Len"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  - name: backward_header_length
+    category: header
+    type: numeric
+    cse:
+      source: "Bwd Header Len"
+      availability: direct
+    ctu:
+      source: null
+      availability: unavailable
+
+  

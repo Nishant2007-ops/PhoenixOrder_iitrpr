@@ -1,0 +1,31 @@
+# Datasets
+datasets/
+*.csv
+*.binetflow
+*.pcap
+*.tar
+*.tar.bz2
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Models
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Generated/intermediate data
+data/
+*.parquet
+
+# Logs
+*.log
