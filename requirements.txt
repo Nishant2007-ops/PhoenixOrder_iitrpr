@@ -1,0 +1,14 @@
+# Core project and demo dependencies (derived from imports in src/, demo/, dashboard/).
+numpy
+pandas==3.0.3
+scikit-learn
+torch
+joblib
+PyYAML
+plotly
+streamlit==1.58.0
+
+# Explicit project dependency pins requested for the SIH environment.
+supabase==2.31.0
+bcrypt==5.0.0
+requests==2.34.2
