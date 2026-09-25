@@ -50,6 +50,26 @@ def aggregate_states(dataframe):
         AGGREGATIONS
     )
 
+    # Keep flow label statistics aligned with each state window. attack_ratio
+    # retains mixed benign/attack windows instead of hiding them behind a
+    # dominant label. Datasets without labels remain usable by other callers.
+    if "label" in data.columns:
+        labels = data["label"].astype(str).str.strip()
+        normalized_labels = labels.str.lower()
+        window_keys = data["flow_start_time"].dt.floor(WINDOW)
+        label_groups = labels.groupby(window_keys)
+        benign_counts = normalized_labels.eq("benign").groupby(window_keys).sum()
+        flow_counts_by_label = labels.groupby(window_keys).size()
+        attack_counts = flow_counts_by_label - benign_counts
+        label_summary = pd.DataFrame({
+            "attack_flows": attack_counts,
+            "total_flows": flow_counts_by_label,
+            "attack_ratio": attack_counts / flow_counts_by_label,
+            "dominant_label": label_groups.agg(
+                lambda values: values.value_counts().index[0]
+            ),
+        })
+
     states.columns = [
         f"{column}_{aggregation}"
         for column, aggregation in states.columns
@@ -63,8 +83,13 @@ def aggregate_states(dataframe):
     )
 
     states = states.join(flow_counts)
+    if "label" in data.columns:
+        states = states.join(label_summary, how="left")
+        states["attack_ratio"] = states["attack_ratio"].fillna(0.0)
+        states["attack_flows"] = states["attack_flows"].fillna(0).astype(int)
+        states["total_flows"] = states["total_flows"].fillna(0).astype(int)
+        states["is_attack"] = states["attack_ratio"].gt(0).astype(int)
 
     states = states.reset_index()
 
     return states
-

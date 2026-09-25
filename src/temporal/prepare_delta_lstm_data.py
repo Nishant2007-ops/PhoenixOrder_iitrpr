@@ -48,7 +48,14 @@ def prepare_session_states(
     states = states.select_dtypes(
         include="number"
     ).drop(
-        columns=["segment_id"],
+        columns=[
+            "segment_id",
+            "is_attack",
+            "attack_ratio",
+            "attack_flows",
+            "total_flows",
+            "dominant_label",
+        ],
         errors="ignore"
     ).copy()
 
@@ -255,4 +262,3 @@ def prepare_multisession_delta_lstm_data(
         feature_columns,
         scaler
     )
-
