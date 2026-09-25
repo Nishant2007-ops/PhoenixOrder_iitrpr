@@ -21,6 +21,11 @@ from src.features.attack_stage_mapper import (
     analyze_transition
 )
 
+from src.features.behavioral_detector import (
+    analyze_behavioral_transition,
+    build_behavior_evidence
+)
+
 
 DEVICE = torch.device(
     "mps" if torch.backends.mps.is_available() else "cpu"
@@ -120,156 +125,252 @@ def evaluate_session(
     session_name
 ):
 
-    prepared = prepare_session_states(
-        states,
-        feature_columns
-    )
-
-    scaled = scaler.transform(
-        prepared
-    )
-
-    scaled = scaled.astype(
-        np.float32
-    )
-
-    X, y = create_delta_sequences(
-        scaled,
-        SEQUENCE_LENGTH
-    )
-
-    X = torch.tensor(
-        X,
-        dtype=torch.float32
-    ).to(DEVICE)
-
-    y = torch.tensor(
-        y,
-        dtype=torch.float32
-    ).to(DEVICE)
-
     model.eval()
 
-    with torch.no_grad():
-
-        predicted_delta = model(X)
-
-    last_state = X[:, -1, :]
-
-    predicted_state = (
-        last_state + predicted_delta
-    )
-
-    actual_next_state = (
-        last_state + y
-    )
-
-    persistence_state = last_state
-
+    all_predicted = []
+    all_actual = []
+    all_persistence = []
     stage_rows = []
 
-    for i in range(
-        len(predicted_state)
-    ):
-
-        current_scaled = (
-            last_state[i]
-            .detach()
-            .cpu()
-            .numpy()
+    if "segment_id" in states.columns:
+        segments = states.groupby(
+            "segment_id",
+            sort=True
         )
+    else:
+        segments = [(0, states)]
 
-        predicted_scaled = (
-            predicted_state[i]
-            .detach()
-            .cpu()
-            .numpy()
-        )
+    for segment_id, segment in segments:
 
-        current_real = inverse_transform_state(
-            current_scaled,
-            scaler,
+        segment = segment.sort_values(
+            "flow_start_time"
+        ).reset_index(drop=True)
+
+        prepared = prepare_session_states(
+            segment,
             feature_columns
         )
 
-        predicted_real = inverse_transform_state(
-            predicted_scaled,
-            scaler,
-            feature_columns
+        scaled = scaler.transform(
+            prepared
         )
 
-        transition_df = build_transition_dataframe(
-            current_real,
-            predicted_real,
-            feature_columns
+        scaled = scaled.astype(
+            np.float32
         )
 
-        significant = get_significant_transitions(
-            transition_df,
-            threshold=0.20
+        X, y = create_delta_sequences(
+            scaled,
+            SEQUENCE_LENGTH
         )
 
-        analysis = analyze_transition(
-            transition_df
+        if len(X) == 0:
+            continue
+
+        X = torch.tensor(
+            X,
+            dtype=torch.float32
+        ).to(DEVICE)
+
+        y = torch.tensor(
+            y,
+            dtype=torch.float32
+        ).to(DEVICE)
+
+        with torch.no_grad():
+            predicted_delta = model(X)
+
+        last_state = X[:, -1, :]
+
+        predicted_state = (
+            last_state + predicted_delta
         )
 
-        stage_analysis = analysis[
-            "stage_analysis"
-        ]
-
-        mitre_mapping = analysis[
-            "mitre_mapping"
-        ]
-
-        evidence = "; ".join(
-            stage_analysis["evidence"]
+        actual_next_state = (
+            last_state + y
         )
 
-        techniques = mitre_mapping[
-            "techniques"
-        ]
+        persistence_state = last_state
 
-        technique_text = "; ".join(
-            [
-                (
+        all_predicted.append(predicted_state)
+        all_actual.append(actual_next_state)
+        all_persistence.append(persistence_state)
+
+        for i in range(len(predicted_state)):
+
+            current_index = (
+                i + SEQUENCE_LENGTH - 1
+            )
+
+            next_index = (
+                i + SEQUENCE_LENGTH
+            )
+
+            current_timestamp = (
+                segment.iloc[
+                    current_index
+                ]["flow_start_time"]
+            )
+
+            next_timestamp = (
+                segment.iloc[
+                    next_index
+                ]["flow_start_time"]
+            )
+
+            current_scaled = (
+                last_state[i]
+                .detach()
+                .cpu()
+                .numpy()
+            )
+
+            predicted_scaled = (
+                predicted_state[i]
+                .detach()
+                .cpu()
+                .numpy()
+            )
+
+            current_real = inverse_transform_state(
+                current_scaled,
+                scaler,
+                feature_columns
+            )
+
+            predicted_real = inverse_transform_state(
+                predicted_scaled,
+                scaler,
+                feature_columns
+            )
+
+            behavioral_analysis = analyze_behavioral_transition(
+                current_real,
+                predicted_real,
+                feature_columns
+            )
+
+            behavioral_evidence = build_behavior_evidence(
+                behavioral_analysis,
+                feature_columns
+            )
+
+            transition_df = build_transition_dataframe(
+                current_real,
+                predicted_real,
+                feature_columns
+            )
+
+            significant = get_significant_transitions(
+                transition_df,
+                threshold=0.20
+            )
+
+            analysis = analyze_transition(
+                transition_df
+            )
+
+            stage_analysis = analysis[
+                "stage_analysis"
+            ]
+
+            mitre_mapping = analysis[
+                "mitre_mapping"
+            ]
+
+            evidence = "; ".join(
+                stage_analysis["evidence"]
+            )
+
+            techniques = mitre_mapping[
+                "techniques"
+            ]
+
+            technique_text = "; ".join(
+                [
                     technique["id"]
                     + " - "
                     + technique["name"]
+                    for technique in techniques
+                ]
+            )
+
+            stage_rows.append({
+                "session": session_name,
+                "segment_id": segment_id,
+                "sequence_index": i,
+                "current_timestamp": current_timestamp,
+                "next_timestamp": next_timestamp,
+                "behavior_score": behavioral_analysis[
+                    "behavior_score"
+                ],
+                "significant_feature_count": behavioral_analysis[
+                    "significant_feature_count"
+                ],
+                "behavior_evidence": "; ".join(
+                    behavioral_evidence
+                ),
+                "stage": stage_analysis["stage"],
+                "score": stage_analysis["score"],
+                "confidence": stage_analysis["confidence"],
+                "evidence": evidence,
+                "mitre_tactic_id": mitre_mapping[
+                    "tactic_id"
+                ],
+                "mitre_tactic": mitre_mapping[
+                    "tactic"
+                ],
+                "mitre_techniques": technique_text
+            })
+
+            if (
+                session_name == TEST_NAMES[0]
+                and segment_id == 0
+                and i == 0
+            ):
+
+                transition_df.to_csv(
+                    "first_transition_real_all.csv",
+                    index=False
                 )
-                for technique in techniques
-            ]
+
+                significant.to_csv(
+                    "first_transition_real.csv",
+                    index=False
+                )
+
+    if not all_predicted:
+
+        empty_state = torch.empty(
+            (
+                0,
+                len(feature_columns)
+            ),
+            dtype=torch.float32,
+            device=DEVICE
         )
 
-        stage_rows.append({
-            "session": session_name,
-            "sequence_index": i,
-            "stage": stage_analysis["stage"],
-            "score": stage_analysis["score"],
-            "confidence": stage_analysis["confidence"],
-            "evidence": evidence,
-            "mitre_tactic_id": mitre_mapping[
-                "tactic_id"
-            ],
-            "mitre_tactic": mitre_mapping[
-                "tactic"
-            ],
-            "mitre_techniques": technique_text
-        })
+        return (
+            pd.DataFrame(stage_rows),
+            empty_state,
+            empty_state.clone(),
+            empty_state.clone()
+        )
 
-        if (
-            session_name == TEST_NAMES[0]
-            and i == 0
-        ):
+    predicted_state = torch.cat(
+        all_predicted,
+        dim=0
+    )
 
-            transition_df.to_csv(
-                "first_transition_real_all.csv",
-                index=False
-            )
+    actual_next_state = torch.cat(
+        all_actual,
+        dim=0
+    )
 
-            significant.to_csv(
-                "first_transition_real.csv",
-                index=False
-            )
+    persistence_state = torch.cat(
+        all_persistence,
+        dim=0
+    )
 
     stage_dataframe = pd.DataFrame(
         stage_rows
@@ -281,7 +382,6 @@ def evaluate_session(
         actual_next_state,
         persistence_state
     )
-
 
 def main():
 
