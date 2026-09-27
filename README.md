@@ -1,294 +1,598 @@
-# PhoenixOrder_iitrpr — SIH 2026 | SIH26153
+# 🔥 PhoenixOrder_iitrpr
 
-**AI-driven proactive cyber defence using temporal network behaviour and world models**
+### AI-Powered Predictive Cyber Defence Using Temporal Network Behaviour
 
-PhoenixOrder is a research prototype for turning flow-level network telemetry into short-horizon temporal states, identifying suspicious behaviour, and presenting evidence that can help an analyst investigate. It combines a multitask Delta-LSTM with a separate behavioral-change analysis and rule-based attack-stage interpretation. The current primary input is a CSE-CIC-IDS2018-style flow CSV.
+> **SIH 2026 — Problem Statement: SIH26153**
 
-> **Prototype status:** this is not a production intrusion-detection system (IDS). On the frozen 218-window test set, the multitask model has a 75.00% false-positive rate. The results are reported as measured; this README does not claim production readiness.
+PhoenixOrder is an **active cyber-defence prototype** for representing network behaviour over time, flagging attack-like windows, and presenting evidence for analyst review. The longer-term project goal is to learn how attacks evolve and anticipate their likely next stage.
 
-## 1. Project overview
+Instead of only asking **"Is this network traffic malicious?"**, PhoenixOrder aims to answer a more important question:
 
-The project explores a world-model-inspired workflow for proactive cyber defence: encode recent network behaviour as a sequence of states, predict the next-state change, and jointly estimate whether the next window is an attack. Separate analysis components describe behavioral changes, map evidence to a coarse attack stage, and offer defensive recommendations for human review.
+> **"What is the attacker likely to do next?"**
 
-The saved inference path is designed to run locally and offline. It does not send traffic or data to cloud APIs.
+The current prototype converts flow records into **temporal network states** and uses a multitask Delta-LSTM to predict the next-state feature change and classify the next window as attack or benign. It does not currently predict the next attack stage.
 
-## 2. Problem being solved
+> **Prototype benchmark:** the current classifier benchmark has a high false-positive rate. On the fixed 218-window test set, the Logistic Regression FPR is **0.9695** and the Multitask Delta-LSTM FPR is **0.7500**. PhoenixOrder is a research prototype, not a production IDS. The current LSTM attack output is an attack probability; it does not directly predict an attack stage.
 
-Flow records are numerous and individually hard to interpret. Aggregating them into time-ordered states can expose changes in volume, direction, packet timing, and TCP flags. PhoenixOrder investigates whether a temporal model can use those patterns to flag attack windows early enough to support investigation.
+---
 
-The project evaluates a limited labeled benchmark. It does not establish effectiveness on unseen networks, generalize to all attack families, or replace analyst judgment.
+## 🎯 1. Problem
 
-## 3. Key features
+Traditional Intrusion Detection Systems mainly focus on identifying whether current network traffic is:
 
-- CSE-CIC-IDS2018-style flow CSV preprocessing and label normalization.
-- Five-minute aggregation into network-behavior states.
-- Twelve-state temporal contexts (about one hour where states are contiguous).
-- A multitask Delta-LSTM for next-state delta prediction and attack classification.
-- A Logistic Regression baseline using the benchmark's temporal features.
-- Independent behavioral-change analysis, rule-based stage mapping, MITRE ATT&CK references, and deterministic defense recommendations.
-- A Streamlit demonstration and reusable offline inference pipeline.
-- Validation-based threshold selection and a frozen test evaluation.
+* Normal
+* Suspicious
+* Malicious
 
-## 4. End-to-end architecture
+However, cyberattacks are not isolated events. They usually follow a sequence of actions.
+
+For example:
 
 ```text
-CSE-CIC-IDS2018-style flow CSV
-              |
-              v
-  normalize fields and labels
-              |
-              v
-  aggregate flows into 5-minute states
-              |
-              v
-  order states and split at session gaps
-              |
-              v
-  12-state context (12 x 32 features)
-              |
-              v
-       saved feature scaler
-              |
-              v
-       shared LSTM encoder
-          /             \
-         v               v
-  next-state delta   attack classifier
-     prediction       probability/score
-         |               |
-         +-------+-------+
-                 v
-  behavioral change, stage interpretation,
-  MITRE context, and defense recommendations
-                 |
-                 v
-        local Streamlit / CSV output
+Reconnaissance
+      ↓
+Initial Access
+      ↓
+Execution
+      ↓
+Persistence
+      ↓
+Privilege Escalation
+      ↓
+Lateral Movement
+      ↓
+Command & Control
+      ↓
+Impact
 ```
 
-The classifier score, behavioral-change score, and interpreted attack stage are separate outputs; see [Behavioral change analysis](#11-behavioural-change-analysis) and [Attack-stage interpretation](#12-attack-stage-interpretation).
+If a system can understand this **progression over time**, it can potentially warn defenders before the attacker reaches the next stage.
 
-## 5. Repository structure
+This is the core motivation behind PhoenixOrder.
 
-The tree below reflects the current repository files. Dataset files and model binaries are local artifacts and are intentionally not listed as source files.
+---
+
+# 🚀 2. Our Solution
+
+PhoenixOrder transforms raw network traffic into meaningful **temporal network states**.
+
+### Our core pipeline:
 
 ```text
-.
-├── config/
-│   └── feature_schema.yaml
-├── dashboard/
-│   └── dashboard.py
-├── demo/
-│   └── app.py
-├── reports/
-│   ├── attack_detection_benchmark.csv
-│   ├── attack_detection_comparison_with_multitask.csv
-│   ├── attack_threshold_analysis.md
-│   ├── final_benchmark.csv
-│   └── multitask_threshold_sensitivity.md
-├── src/
-│   ├── analysis/       # offline inference and result/timeline utilities
-│   ├── features/       # behavior, transitions, stages, defense suggestions
-│   ├── models/         # LSTM, training, evaluation, benchmark scripts
-│   ├── preprocessing/  # CSE/CTU normalization and schema checks
-│   ├── profiling/      # feature and dataset profiling utilities
-│   └── temporal/       # state aggregation, session building, sequences
-├── .gitignore
-├── README.md
-└── requirements.txt
+Network Traffic
+      ↓
+Data Ingestion
+      ↓
+Data Profiling & Validation
+      ↓
+Preprocessing
+      ↓
+Canonical Feature Extraction
+      ↓
+Temporal Network States
+      ↓
+AI/ML Temporal Model
+      ↓
+Attack Progression Prediction
+      ↓
+MITRE ATT&CK Mapping
+      ↓
+Explainable Alert
+      ↓
+Proactive Cyber Defence
 ```
 
-The Python directories contain the implementation files corresponding to their responsibilities. Large datasets (`datasets/`, CSV, PCAP, and related archive formats) and `*.pth` model binaries are ignored by Git. The local saved model assets used by inference are `multitask_delta_lstm_checkpoint.pth`, `multitask_delta_lstm_scaler.joblib`, and `multitask_delta_lstm_features.json`.
+The current prototype includes an offline flow-CSV inference pipeline and a multitask temporal classifier. Predicting the next *attack stage* remains a future goal; the current stage output is a separate rule-based interpretation of behavioral evidence.
 
-## 6. Preprocessing
+---
 
-The CSE normalization code in `src/preprocessing/normalize_cse.py` standardizes the dataset's flow columns for the downstream pipeline, parses timestamps and numeric values, handles duration units and derived flow quantities, and normalizes attack labels through the label-mapping utilities. Schema validation and canonicalization helpers are in `src/preprocessing/`.
+# 🧠 3. What Makes PhoenixOrder Different?
 
-The inference path uses the same project preprocessing and temporal feature construction as the model pipeline. Model features are selected in the saved ordering, transformed with the saved scaler, and are not re-fit during inference. The label/statistical columns used to form evaluation targets are not classifier input features.
+The key idea is **time**.
 
-## 7. Temporal aggregation into five-minute network states
-
-Flows are grouped into five-minute time bins by the temporal aggregation code (`src/temporal/aggregate_states.py`, `src/temporal/build_multisession_dataset.py`). Each state summarizes activity such as packet and byte totals/means, directional traffic, packet and inter-arrival timing, TCP flag counts, and flow counts. States are time ordered and session boundaries are respected so sequences do not bridge large gaps.
-
-Ground-truth `attack_ratio` is derived from the original flow labels within each time bin: the fraction of flows labeled as attacks. The benchmark's binary target treats a window with `attack_ratio > 0` as an attack. Retaining the ratio preserves the distinction between a window with a small attack fraction and one dominated by attack flows, even though the reported benchmark uses a binary target.
-
-## 8. Twelve-state sequence construction
-
-The model consumes twelve consecutive five-minute states, approximately one hour of recent context when the states are contiguous. The sequence builder constructs a context from the prior twelve states and aligns its targets with the following state. Sequences are built within their session/segment rather than across discontinuities.
+Instead of treating every network flow independently:
 
 ```text
-state[t-11] ... state[t]  ──> LSTM context (12 states)
-                                      |
-                                      +──> predict delta to state[t+1]
-                                      +──> classify state[t+1] as attack/benign
+Flow 1 → Malicious
+Flow 2 → Malicious
+Flow 3 → Malicious
 ```
 
-## 9. Multitask Delta-LSTM architecture
-
-The multitask model in `src/models/lstm_model.py` keeps a shared LSTM representation and branches into two heads. Its input has 12 time steps and 32 feature values per step. The next-state head predicts a 32-dimensional change; the attack head produces a binary-classification logit.
+we aim to understand the sequence:
 
 ```text
-12 x 32 temporal input
-         |
-       LSTM
-         |
- shared final hidden representation
-       /                 \
-      v                   v
-  delta head          attack head
-  32 outputs           1 logit
+State 1 → State 2 → State 3 → State 4
+   ↓         ↓         ↓         ↓
+Recon     Access    Execution   C2
 ```
 
-## 10. Next-state delta prediction and attack classification
+Temporal context helps represent how network behaviour changes over time. The current pipeline aggregates flows into five-minute states and uses twelve contiguous states (about one hour) as context. The model learns next-state feature change and attack classification; the stage label shown by the prototype is generated separately by rules.
 
-The delta objective predicts the difference between the next state's scaled feature vector and the current state's vector. The classification objective predicts the binary attack label aligned to that next state. Training combines a delta regression loss (MSE) and a binary classification loss (BCE with logits); the positive-class weight is computed from training labels only to address class imbalance. Validation data is used for model selection and for the saved classification threshold. Test labels are reserved for final evaluation.
+Our long-term goal is to move from:
 
-## 11. Behavioural change analysis
+> **Detection → Prediction → Proactive Defence**
 
-`behavioral_change_score` is produced by the separate behavioral detector from transition/change evidence between network states. It summarizes how unusual or significant the state change appears under that detector's rules. The score is **not** the attack probability and is not the classifier head output. Significant feature changes are surfaced as supporting evidence for review.
+---
 
-## 12. Attack-stage interpretation
+# 📊 4. Datasets
 
-`attack_stage` is a rule-based interpretation of behavioral evidence and available flow context. It is **not directly predicted by the LSTM**. The mapper can return **Unknown** when the evidence is insufficient; an unknown stage is preferable to asserting a stage without support.
+We use publicly available cybersecurity datasets to develop and validate the system.
 
-## 13. MITRE ATT&CK mapping
+### CSE-CIC-IDS2018
 
-Where the current rule-based stage mapper has a compatible mapping, the interface can show associated MITRE ATT&CK tactic/technique context. This is an evidence-linked reference, not a learned ATT&CK classifier and not proof that a technique occurred. Mapping coverage is limited and may be empty for an unknown or unsupported stage.
+The dataset provides network traffic containing both benign and attack traffic.
 
-## 14. Defensive recommendations
+We perform dataset profiling to understand:
 
-The defense recommender provides deterministic, rule-driven suggestions based on the interpreted evidence. Recommendations are for analyst consideration. The system does not automatically block traffic, change firewall rules, quarantine hosts, or execute a response action.
+* Available files
+* Feature availability
+* Column consistency
+* Missing values
+* Feature types
+* Dataset compatibility
 
-## 15. Streamlit demo
+### CTU-13
 
-`demo/app.py` provides a local interface for uploading a CSE-CIC-IDS2018-style CSV and viewing inference results, the probability timeline, and flagged-window evidence. The demo calls the shared inference pipeline instead of defining a second model path. Run it from the repository root:
+CTU-13 provides network traffic from botnet scenarios and is used as an additional source for studying network behaviour.
 
-```bash
-streamlit run demo/app.py --server.address 127.0.0.1
-```
+Using multiple datasets helps us investigate whether our feature representation can work across different network environments.
 
-The uploaded file is processed locally. No cloud service or API key is required. Keep the saved model assets available at the paths expected by the inference module.
+---
 
-## 16. Offline inference
+# ⚙️ 5. Current Technical Pipeline
 
-`src/analysis/run_offline_inference.py` loads the saved checkpoint, scaler, feature ordering, and checkpoint threshold. It processes a local flow CSV and emits one record per valid prediction, including timestamp, classifier probability and class, behavioral-change information, significant feature changes, interpreted stage, MITRE context, and defense recommendations.
+## Step 1 — Data Ingestion
 
-The 32 input features are listed in `multitask_delta_lstm_features.json` and that file defines their exact order:
+Network traffic datasets are loaded into the processing pipeline.
+
+The system is designed to handle differences between dataset files instead of assuming that every file has exactly the same schema.
+
+---
+
+## Step 2 — Dataset Profiling
+
+Before training models, we inspect the datasets.
+
+Our profiling stage checks:
+
+* Number of files
+* Number of features
+* Feature names
+* Schema differences
+* Available traffic information
+* Dataset compatibility
+
+This helps prevent incorrect assumptions during preprocessing.
+
+---
+
+## Step 3 — Feature Standardization
+
+Different datasets can contain different column names and structures.
+
+PhoenixOrder uses a **canonical feature schema** to define the features required by the system.
+
+The canonical schema contains **44 canonical features** for common dataset representation. The trained multitask model uses **32 temporal features** from aggregated network states. Their exact order is stored in `multitask_delta_lstm_features.json`; the saved training scaler is `multitask_delta_lstm_scaler.joblib`.
+
+This provides a common representation for downstream processing.
 
 ```text
-flow_duration_mean, flow_duration_std, total_packets_sum, total_packets_mean,
-total_bytes_sum, total_bytes_mean, forward_packets_sum, forward_packets_mean,
-backward_packets_sum, backward_packets_mean, forward_bytes_sum, forward_bytes_mean,
-backward_bytes_sum, backward_bytes_mean, bytes_per_packet_mean,
-packet_length_mean_mean, packet_length_mean_std, flow_iat_mean_mean,
-flow_iat_std_mean, forward_iat_mean_mean, backward_iat_mean_mean, syn_count_sum,
-ack_count_sum, fin_count_sum, rst_count_sum, psh_count_sum, urg_count_sum,
-down_up_ratio_mean, forward_packet_ratio_mean, active_mean_mean, idle_mean_mean,
-flow_count
+Dataset A ──┐
+            │
+Dataset B ──┼──→ Canonical Feature Schema
+            │
+Dataset C ──┘
+                    ↓
+             Common Representation
 ```
 
-`multitask_delta_lstm_scaler.joblib` is the saved training scaler. Inference loads it; it does not fit a new scaler. The `.pth` checkpoint stores the trained network and validation-selected threshold. Current input is flow CSV; PCAP ingestion is a future extension. Inference is offline and does not require cloud APIs.
+---
 
-## 17. Benchmark methodology
+# ⏱️ 6. Temporal Network States
 
-The frozen benchmark uses date-separated CSE-CIC-IDS2018 sessions:
+This is one of the most important components of PhoenixOrder.
 
-- **Train:** Friday-02-03-2018, Thursday-01-03-2018, Wednesday-28-02-2018, Friday-23-02-2018, Thursday-22-02-2018, Wednesday-21-02-2018.
-- **Validation:** Friday-16-02-2018, Thursday-15-02-2018.
-- **Test:** Wednesday-14-02-2018, Thuesday-20-02-2018.
+Raw network flows are transformed into **time-aware states**.
 
-The split and model feature construction are shared by the benchmarked models. The Logistic Regression baseline uses the benchmark temporal states/features with class balancing. The multitask model uses the saved checkpoint. Its attack threshold was selected using validation data (saved threshold approximately `0.39090657`) and then frozen before test evaluation. The test set is used only for the final reported metrics, not for fitting, tuning, or threshold choice.
+Instead of looking at a single network event, the system considers sequences of events:
 
-Evaluation compares both classifiers over the same 218 test windows and the same binary ground truth. False-positive rate is `FP / (FP + TN)`. Reports and the reproducible runner are under `reports/` and `src/models/`.
+```text
+t1 → t2 → t3 → t4 → t5
+```
 
-## 18. Exact benchmark results
+Each time step represents the observed network behaviour during a particular period.
 
-Frozen test results (positive class: attack; 218 windows total):
+The current pipeline aggregates flows into **five-minute network states**. It builds a context from **12 consecutive states** (about one hour when the states are contiguous) and aligns the model target to the following state. Sequences do not bridge session gaps. Flow labels are retained as `attack_ratio`; the benchmark binary label marks a window as attack when `attack_ratio > 0`.
 
-| Model | Precision | Recall | F1 | False-positive rate |
+The multitask Delta-LSTM receives 12 states with 32 features per state. Its shared LSTM representation feeds two heads: a 32-value next-state delta predictor and a binary attack classifier. Training combines next-state delta regression loss with binary classification loss and uses a training-derived positive class weight. The scaler and feature order are saved and loaded for inference.
+
+---
+
+# 🤖 7. AI/ML Approach
+
+PhoenixOrder is designed around temporal machine learning.
+
+The architecture can use models such as:
+
+### LSTM
+
+LSTM networks are useful for learning patterns from sequential data.
+
+```text
+State 1
+   ↓
+State 2
+   ↓
+State 3
+   ↓
+State 4
+   ↓
+Prediction
+```
+
+### Transformer-based Temporal Models
+
+Transformers can capture relationships between different points in a sequence and are a possible future approach for modelling attack progression.
+
+Our development direction is to compare and improve temporal models based on the behaviour of the available data.
+
+---
+
+# 🛡️ 8. Attack Progression Prediction
+
+The ultimate objective is not simply to classify traffic.
+
+We want to forecast the **next likely attack stage**.
+
+For example:
+
+```text
+Observed:
+Reconnaissance → Initial Access → Execution
+
+Prediction:
+                  ↓
+          Possible next stage
+```
+
+The current LSTM predicts attack probability and next-state feature delta; it does **not** predict the next attack stage. Current `attack_stage` is a **rule-based interpretation** of observed evidence and may be `Unknown` when the evidence is insufficient. Compatible rule mappings can attach MITRE ATT&CK context. The defense recommender provides advisory suggestions; autonomous traffic blocking is not implemented.
+
+---
+
+# 🗺️ 9. MITRE ATT&CK Integration
+
+The current rule-based stage mapper attaches **MITRE ATT&CK** references for a limited set of compatible stages. This is not a learned technique classifier or verified incident attribution; broader mapping is future work.
+
+Conceptually:
+
+```text
+Network Behaviour
+       ↓
+Detected Pattern
+       ↓
+Attack Technique
+       ↓
+MITRE ATT&CK Mapping
+       ↓
+Defensive Recommendation
+```
+
+This makes the prediction more understandable to cybersecurity analysts and helps connect machine-learning output with established security knowledge.
+
+---
+
+# 🔍 10. Explainability
+
+A cybersecurity system should not simply say:
+
+> "Attack predicted."
+
+The defender should also understand **why** the system generated the prediction.
+
+The offline inference output keeps three signals distinct: `attack_probability` is the neural classifier output; `behavioral_change_score` is the separate behavioral detector's network-state change signal; `attack_stage` is a rule-based interpretation, not an LSTM prediction. Significant feature changes and mapped context support analyst review. `Unknown` is valid when evidence is insufficient.
+
+This is intended to make the system more useful for human analysts rather than acting as a completely opaque AI model.
+
+---
+
+# 🧪 11. Current Prototype Status
+
+PhoenixOrder is currently a **working prototype under active development**, rather than a fully deployed production cybersecurity platform.
+
+### Implemented / validated
+
+* Dataset ingestion
+* CSE-CIC-IDS2018 profiling
+* CTU-13 dataset profiling
+* Dataset schema comparison
+* Canonical feature schema
+* Feature availability analysis
+* Initial preprocessing pipeline
+* Project architecture
+* Testing and validation of core modules
+* Five-minute state aggregation and 12-state sequence construction
+* Logistic Regression baseline and multitask Delta-LSTM benchmark
+* Offline inference using the saved checkpoint, scaler and feature ordering
+* Streamlit prototype for local CSV upload and result review
+* Behavioral-change analysis, limited rule-based stage/MITRE mapping and defense suggestions
+
+### Currently under development
+
+The project is extending its temporal representation and investigating better ways to reduce false alarms and learn attack progression. The existing benchmark and model remain as documented; current implementation should not be interpreted as stage prediction.
+
+### Future scope
+
+PCAP ingestion, real-time streaming, learned attack-stage prediction, broader MITRE ATT&CK coverage, and analyst-approved response automation are planned. Autonomous traffic blocking is not implemented.
+
+---
+
+# 📈 12. Prototype Evaluation
+
+We evaluate the system at multiple levels instead of relying on a single metric.
+
+### Data-level evaluation
+
+* Feature availability
+* Schema consistency
+* Dataset compatibility
+* Data quality
+
+### Software-level evaluation
+
+* Automated tests
+* Module validation
+* Pipeline correctness
+
+### Frozen ML benchmark
+
+The benchmark uses six CSE-CIC-IDS2018 sessions for training, two for validation, and two held-out sessions for test. Validation data selects the multitask classification threshold; test labels are used only for final evaluation. Both models use the same 218 test windows and binary ground-truth labels (164 benign, 54 attack).
+
+| Model | Precision | Recall | F1 | FPR |
 |---|---:|---:|---:|---:|
 | Logistic Regression | 0.2535 | 1.0000 | 0.4045 | 0.9695 |
 | Multitask Delta-LSTM | 0.3051 | 1.0000 | 0.4675 | 0.7500 |
 
-Test class distribution: **164 benign**, **54 attack**. The multitask confusion matrix in `[[TN, FP], [FN, TP]]` order is:
+Multitask Delta-LSTM confusion matrix, ordered `[[TN, FP], [FN, TP]]`:
 
 ```text
-[[ 41, 123],
- [  0,  54]]
+[[41, 123],
+ [ 0,  54]]
 ```
 
-The high false-positive rate means many benign windows are flagged. Perfect recall on this test set does not make the model operationally reliable; these are prototype results on a limited benchmark, not a production IDS guarantee.
+The FPR remains high: the multitask model flags 123 of 164 benign test windows. These results are prototype evidence on a limited dataset, not a production performance claim.
 
-## 19. Explainability
+---
 
-The demo presents distinct, inspectable outputs:
+# ⚠️ 13. Current Limitations
 
-- **`attack_probability`** — the neural-network classifier's sigmoid probability for the attack class.
-- **`behavioral_change_score`** — the behavioral detector's network-state change signal.
-- **`attack_stage`** — a rule-based interpretation from available evidence; it can be `Unknown`.
-- Significant feature changes, mapped tactic/technique context, and suggested defenses provide additional investigation context.
+Our current prototype has several limitations.
 
-These signals have different meanings and should not be treated as interchangeable confidence values or causal explanations.
+### 1. Offline datasets
 
-## 20. Limitations
+The present system primarily works with recorded datasets rather than live enterprise network traffic.
 
-- The measured false-positive rates are high: 96.95% for Logistic Regression and 75.00% for the multitask Delta-LSTM on the current test split.
-- The benchmark covers a limited collection of sessions and attack/benign windows from one dataset; traffic from other networks may differ substantially.
-- A binary label marks a window as attack when its flow-level `attack_ratio` is nonzero, including windows with only a small attack fraction. This target choice affects class labels and metrics.
-- Five-minute aggregation loses within-window ordering and detail; twelve states are only approximately one hour and may be shorter near session boundaries.
-- Stage and MITRE outputs are rule-based with limited coverage, not model predictions or verified incident attribution.
-- Recommendations are advisory only. There is no autonomous traffic blocking or response automation.
-- PCAP ingestion and live streaming are not implemented; the current primary input is a flow CSV.
-- Performance numbers should be interpreted as prototype benchmark evidence, not as a security or production guarantee.
+### 2. Limited attack progression labels
 
-## 21. Future roadmap
+Datasets do not always directly provide clean sequential labels representing every stage of an attack.
 
-- Stronger temporal representation learning.
-- Transformer-based sequence models.
-- GNN and network-graph modelling.
-- Richer latent world models.
-- Multi-step future-state prediction.
-- Broader MITRE ATT&CK stage coverage.
-- Learned attack-stage transitions.
-- PCAP ingestion.
-- Real-time streaming inference.
-- SOC alert correlation.
-- Analyst-approved response automation.
+### 3. Cross-dataset differences
 
-## 22. Reproducibility
+Different datasets contain different features, schemas and traffic characteristics.
 
-Reproducible inference depends on the exact saved checkpoint, scaler, and ordered feature list. The benchmark runner and split definitions are retained in the repository; the final benchmark result is saved separately. The threshold is selected from validation data and kept fixed for test scoring. Training/benchmark reproduction additionally requires obtaining the original CSE-CIC-IDS2018 data files locally.
+### 4. High false-positive rate and limited stage coverage
 
-Large dataset files and `*.pth` model binaries are intentionally excluded from Git, so a fresh clone may not contain everything needed for inference or training. Keep the checkpoint, scaler, and feature-order JSON from the same model release together. Do not replace the scaler or feature ordering independently.
+The current benchmark produces many false alarms. The stage output is rule-based and supports only limited evidence mappings; the model does not forecast an attack stage.
 
-## 23. Team and project information
+### 5. Explainability and real-time deployment
 
-- **Project:** PhoenixOrder_iitrpr
-- **Event:** Smart India Hackathon 2026
-- **Problem statement:** SIH26153
-- **Theme:** AI-driven proactive cyber defence using temporal network behaviour and world models
-- **Institution/team:** IIT Ropar project (team and contributor details can be added here by the project owners).
+PCAP ingestion and real-time deployment are planned extensions. Autonomous traffic blocking is not implemented.
 
-## 24. Quick start
+---
 
-From the repository root, create an environment and install the dependencies:
+# 🔮 14. Future Scope
+
+Our future development is focused on extending the current prototype toward a complete predictive cyber-defence platform.
+
+Planned technical directions include stronger temporal representation learning, Transformers, GNN/network-graph modelling, richer latent world models, multi-step future-state prediction, broader MITRE ATT&CK stage coverage, learned attack-stage transitions, PCAP ingestion, real-time streaming inference, SOC alert correlation, and analyst-approved response automation.
+
+### Phase 1 — Data Foundation
+
+```text
+✓ Dataset Profiling
+✓ Feature Availability
+✓ Canonical Feature Schema
+✓ Data Validation
+```
+
+### Phase 2 — Temporal Intelligence
+
+```text
+→ Temporal State Construction
+→ LSTM / Transformer Models
+→ Attack Progression Learning
+→ Next-Stage Prediction
+```
+
+### Phase 3 — Cybersecurity Intelligence
+
+```text
+→ MITRE ATT&CK Mapping
+→ Explainable Predictions
+→ Attack Graph Representation
+→ Analyst-Oriented Alerts
+```
+
+### Phase 4 — Proactive Defence
+
+```text
+→ Real-Time Network Monitoring
+→ Continuous Prediction
+→ Early Warning
+→ Defensive Recommendations
+→ Integration with Security Infrastructure
+```
+
+Our long-term vision is:
+
+```text
+Detect
+  ↓
+Understand
+  ↓
+Predict
+  ↓
+Explain
+  ↓
+Act
+```
+
+---
+
+# 🏗️ 15. Project Structure
+
+```text
+PhoenixOrder_iitrpr/
+│
+├── config/
+│   └── feature_schema.yaml
+│
+├── src/
+│   ├── analysis/
+│   ├── features/
+│   ├── models/
+│   ├── profiling/
+│   ├── preprocessing/
+│   └── temporal/
+│
+├── demo/
+│   └── app.py
+│
+├── dashboard/
+│   └── dashboard.py
+│
+├── reports/
+│
+├── requirements.txt
+├── README.md
+└── .gitignore
+```
+
+The repository is organized into analysis, feature, model, profiling, preprocessing, and temporal modules, alongside the demo, dashboard, configuration, and reports. Dataset files and `*.pth` checkpoint binaries are intentionally excluded from Git.
+
+---
+
+# 💻 16. Setup
+
+## Clone the repository
 
 ```bash
-python3 -m venv .venv
+git clone <repository-url>
+cd PhoenixOrder_iitrpr
+python -m venv .venv
+```
+
+### macOS / Linux
+
+```bash
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ```
 
-Place the matching saved model assets where `src/analysis/run_offline_inference.py` expects them, then run the local demo:
+### Windows
 
 ```bash
-streamlit run demo/app.py --server.address 127.0.0.1
+.venv\Scripts\activate
 ```
 
-For inference from the command line with a local flow CSV:
+## Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# ▶️ 17. Running the Project
+
+Run the local Streamlit prototype from the repository root:
+
+```bash
+streamlit run demo/app.py
+```
+
+After this command, the PhoenixOrder prototype opens in your browser. It accepts a CSE-CIC-IDS2018-style flow CSV and calls the offline inference pipeline. The matching saved checkpoint, scaler, and feature-order file must be available locally. No cloud API or key is required.
+
+Dataset profiling is available for locally placed CSE-CIC-IDS2018 and CTU-13 files at the paths configured in `src/profiling/profile_datasets.py`:
+
+```bash
+python src/profiling/profile_datasets.py
+```
+
+Offline inference from a CSV is available as:
 
 ```bash
 python -m src.analysis.run_offline_inference /path/to/flows.csv --output /path/to/predictions.csv
 ```
 
-Training and benchmark reproduction require the CSE-CIC-IDS2018 input files locally; datasets are not bundled in this repository. No command in the demo needs cloud access. **Do not interpret this prototype as an autonomous or production IDS.**
+> **Note:** Large datasets are intentionally not included in this repository. Dataset download and placement instructions will be provided separately to keep the repository lightweight.
+
+---
+
+# 👥 18. Team
+
+### Team: PhoenixOrder_iitrpr
+
+**Smart India Hackathon 2026**
+
+**Problem Statement:** SIH26153
+
+Our team combines interests in:
+
+* Artificial Intelligence / Machine Learning
+* Data Science
+* Cybersecurity
+* Software Development
+* Network Behaviour Analysis
+
+---
+
+# 🌟 19. Our Vision
+
+Cyber defence should not only react to attacks after they occur.
+
+It should understand how an attack is evolving and provide defenders with information early enough to respond.
+
+**PhoenixOrder aims to build that capability.**
+
+```text
+        CURRENT SYSTEMS
+              │
+              ▼
+        Detect Attacks
+              │
+              ▼
+       PhoenixOrder
+              │
+              ▼
+      Learn Behaviour
+              │
+              ▼
+      Understand Sequence
+              │
+              ▼
+       Predict Next Stage
+              │
+              ▼
+       Enable Early Action
+```
+
+> **PhoenixOrder — From detecting attacks to anticipating their progression.**
+
+---
+
+## 📌 Project Status
+
+**Prototype Status: Active Development — offline flow-CSV inference is implemented; not production-ready.**
+
+The current implementation includes a saved multitask Delta-LSTM, an offline inference path, behavioral analysis, limited rule-based stage/MITRE interpretation, and advisory recommendations. Its false-positive rate is high. PCAP/live streaming, learned stage transitions, expanded ATT&CK coverage, and response automation remain roadmap items.
+
+**From detecting attacks to anticipating their progression.**
